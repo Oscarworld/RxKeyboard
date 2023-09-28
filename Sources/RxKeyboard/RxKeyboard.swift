@@ -41,6 +41,15 @@ public class RxKeyboard: NSObject, RxKeyboardType {
   /// An observable visibility of keyboard. Emits keyboard visibility
   /// when changed keyboard show and hide.
   public let isHidden: Driver<Bool>
+    
+  /// An observable keyboard appearance animation duration
+  public let duration = BehaviorRelay<Double>(value: 0.0)
+
+  /// An observable keyboard appearance direction
+  public let isShowing = BehaviorRelay<Bool>(value: true)
+
+  /// An observable panning flag
+  public let isPanning = BehaviorRelay<Bool>(value: false)
 
   // MARK: Private
 
@@ -72,6 +81,35 @@ public class RxKeyboard: NSObject, RxKeyboardType {
       .map { state in state.visibleHeight }
     self.isHidden = self.visibleHeight.map({ $0 == 0.0 }).distinctUntilChanged()
     super.init()
+      
+      // Keyboard appearance duration
+      Observable
+          .of(
+            NotificationCenter.default.rx.notification(UIResponder.keyboardWillChangeFrameNotification).asObservable(),
+            NotificationCenter.default.rx.notification(UIResponder.keyboardWillHideNotification).asObservable()
+          )
+          .merge()
+          .map {
+              ($0.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.0
+          }
+          .bind(to: self.duration)
+          .disposed(by: self.disposeBag)
+      
+      // Keyboard direction
+      Observable
+          .of(
+            NotificationCenter.default.rx.notification(UIResponder.keyboardWillShowNotification).asObservable().map { _ in true },
+            NotificationCenter.default.rx.notification(UIResponder.keyboardWillHideNotification).asObservable().map { _ in false }
+          )
+          .merge()
+          .bind(to: self.isShowing)
+          .disposed(by: self.disposeBag)
+      
+      // Panning flag
+      panRecognizer.rx.event
+          .map { $0.state == .began || $0.state == .changed }
+          .bind(to: self.isPanning)
+          .disposed(by: self.disposeBag)
 
     // keyboard will change frame
     let willChangeFrame = NotificationCenter.default.rx.notification(keyboardWillChangeFrame)
